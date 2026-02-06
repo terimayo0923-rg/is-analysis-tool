@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IS架電ログ - 管理者ダッシュボード</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="auth.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <nav class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <h1 class="text-xl font-bold text-gray-800">IS架電ログ - 管理者</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="userEmail" class="text-sm text-gray-600"></span>
+                    <button 
+                        onclick="logout()" 
+                        class="text-sm text-red-600 hover:text-red-800"
+                    >
+                        ログアウト
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- エクスポート機能 -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-bold mb-4 text-gray-800">データエクスポート</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="startDate" class="block text-sm font-medium text-gray-700 mb-1">開始日</label>
+                    <input 
+                        type="date" 
+                        id="startDate" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                </div>
+                
+                <div>
+                    <label for="endDate" class="block text-sm font-medium text-gray-700 mb-1">終了日</label>
+                    <input 
+                        type="date" 
+                        id="endDate" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                </div>
+            </div>
+            
+            <div class="flex space-x-4">
+                <button 
+                    onclick="exportCSV()" 
+                    class="bg-green-600 text-white py-2 px-6 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 font-medium"
+                >
+                    CSVでエクスポート
+                </button>
+                <button 
+                    onclick="exportJSON()" 
+                    class="bg-blue-600 text-white py-2 px-6 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                >
+                    JSONでエクスポート
+                </button>
+            </div>
+            
+            <div id="exportMessage" class="mt-4 hidden"></div>
+        </div>
+
+        <!-- データ一覧 -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-800">全データ一覧</h2>
+                <button 
+                    onclick="loadAllLogs()" 
+                    class="text-sm bg-gray-100 text-gray-700 py-1 px-3 rounded-md hover:bg-gray-200"
+                >
+                    再読み込み
+                </button>
+            </div>
+            
+            <div class="mb-4">
+                <label for="filterUser" class="block text-sm font-medium text-gray-700 mb-1">担当者で絞り込み</label>
+                <select 
+                    id="filterUser" 
+                    onchange="loadAllLogs()"
+                    class="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                    <option value="">すべて</option>
+                </select>
+            </div>
+            
+            <div id="allLogsList" class="space-y-4">
+                <p class="text-gray-500 text-center py-8">読み込み中...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allLogsData = [];
+        let usersMap = {};
+        
+        // ページ読み込み時に認証チェック
+        async function init() {
+            const authenticated = await requireAuth();
+            if (!authenticated) return;
+            
+            // 管理者権限チェック
+            const admin = await requireAdmin();
+            if (!admin) return;
+            
+            // ユーザー情報を表示
+            const user = await getCurrentUser();
+            if (user) {
+                document.getElementById('userEmail').textContent = user.email;
+            }
+            
+            // ユーザー一覧を取得
+            await loadUsers();
+            
+            // 全ログを読み込み
+            await loadAllLogs();
+        }
+        
+        init();
+        
+        // ユーザー一覧を取得
+        async function loadUsers() {
+            const { data, error } = await supabase
+                .from('calls_logs')
+                .select('user_id, user_email')
+                .order('user_id');
+            
+            if (error) {
+                console.error('ユーザー取得エラー:', error);
+                return;
+            }
+            
+            // ユニークなuser_idを取得
+            const uniqueUsers = {};
+            data.forEach(log => {
+                if (!uniqueUsers[log.user_id]) {
+                    uniqueUsers[log.user_id] = log.user_email || log.user_id;
+                }
+            });
+            
+            usersMap = uniqueUsers;
+            
+            // セレクトボックスに追加
+            const filterUser = document.getElementById('filterUser');
+            filterUser.innerHTML = '<option value="">すべて</option>';
+            for (const [userId, email] of Object.entries(usersMap)) {
+                const option = document.createElement('option');
+                option.value = userId;
+                option.textContent = email;
+                filterUser.appendChild(option);
+            }
+        }
+        
+        // 全ログを読み込む
+        async function loadAllLogs() {
+            const filterUserId = document.getElementById('filterUser').value;
+            
+            let query = supabase
+                .from('calls_logs')
+                .select('*')
+                .order('date', { ascending: false })
+                .order('created_at', { ascending: false });
+            
+            if (filterUserId) {
+                query = query.eq('user_id', filterUserId);
+            }
+            
+            const { data, error } = await query;
+            
+            const logsList = document.getElementById('allLogsList');
+            
+            if (error) {
+                logsList.innerHTML = '<p class="text-red-500 text-center py-8">エラー: ' + error.message + '</p>';
+                return;
+            }
+            
+            allLogsData = data || [];
+            
+            if (allLogsData.length === 0) {
+                logsList.innerHTML = '<p class="text-gray-500 text-center py-8">データがありません</p>';
+                return;
+            }
+            
+            logsList.innerHTML = allLogsData.map(log => `
+                <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <span class="text-sm font-medium text-gray-700">${log.date}</span>
+                            <span class="ml-3 text-sm text-gray-600">担当者: ${usersMap[log.user_id] || log.user_id}</span>
+                            ${log.company_name ? `<span class="ml-3 px-2 py-1 text-xs rounded bg-gray-100 text-gray-800">${escapeHtml(log.company_name)}</span>` : ''}
+                            <span class="ml-3 px-2 py-1 text-xs rounded ${
+                                log.result === '成功' ? 'bg-green-100 text-green-800' :
+                                log.result === '失敗' ? 'bg-red-100 text-red-800' :
+                                'bg-yellow-100 text-yellow-800'
+                            }">${log.result}</span>
+                            <span class="ml-2 px-2 py-1 text-xs rounded bg-blue-100 text-blue-800">温度感: ${log.temperature}</span>
+                            <span class="ml-2 px-2 py-1 text-xs rounded bg-purple-100 text-purple-800">次アクション: ${log.next_action}</span>
+                        </div>
+                    </div>
+                    ${log.memo ? `<div class="text-sm text-gray-600 mt-2 mb-2"><strong>メモ:</strong> ${escapeHtml(log.memo)}</div>` : ''}
+                    <div class="text-sm text-gray-600 mt-2 whitespace-pre-wrap">${escapeHtml(log.transcript)}</div>
+                </div>
+            `).join('');
+        }
+        
+        // CSVエクスポート
+        async function exportCSV() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            let dataToExport = allLogsData;
+            
+            // 期間フィルタ
+            if (startDate || endDate) {
+                dataToExport = allLogsData.filter(log => {
+                    if (startDate && log.date < startDate) return false;
+                    if (endDate && log.date > endDate) return false;
+                    return true;
+                });
+            }
+            
+            if (dataToExport.length === 0) {
+                const messageDiv = document.getElementById('exportMessage');
+                messageDiv.className = 'mt-4 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-md';
+                messageDiv.textContent = 'エクスポートするデータがありません';
+                messageDiv.classList.remove('hidden');
+                setTimeout(() => {
+                    messageDiv.classList.add('hidden');
+                }, 3000);
+                return;
+            }
+            
+            // CSVヘッダー
+            const headers = ['担当者', '日付', '企業名', '結果', '温度感', '次アクション', 'メモ', '文字起こし'];
+            
+            // CSVデータ
+            const csvRows = [
+                headers.join(','),
+                ...dataToExport.map(log => {
+                    const row = [
+                        `"${(usersMap[log.user_id] || log.user_id).replace(/"/g, '""')}"`,
+                        `"${log.date}"`,
+                        `"${(log.company_name || '').replace(/"/g, '""')}"`,
+                        `"${log.result}"`,
+                        `"${log.temperature}"`,
+                        `"${log.next_action}"`,
+                        `"${(log.memo || '').replace(/"/g, '""')}"`,
+                        `"${log.transcript.replace(/"/g, '""').replace(/\n/g, ' ')}"`
+                    ];
+                    return row.join(',');
+                })
+            ];
+            
+            const csvContent = csvRows.join('\n');
+            const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            
+            const dateStr = startDate && endDate ? `${startDate}_${endDate}` : 
+                          startDate ? `${startDate}_以降` :
+                          endDate ? `_${endDate}` : '全データ';
+            link.download = `is_call_logs_${dateStr}_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+            
+            URL.revokeObjectURL(url);
+            
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.className = 'mt-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-md';
+            messageDiv.textContent = `${dataToExport.length}件のデータをCSVでエクスポートしました`;
+            messageDiv.classList.remove('hidden');
+            setTimeout(() => {
+                messageDiv.classList.add('hidden');
+            }, 3000);
+        }
+        
+        // JSONエクスポート
+        async function exportJSON() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            let dataToExport = allLogsData;
+            
+            // 期間フィルタ
+            if (startDate || endDate) {
+                dataToExport = allLogsData.filter(log => {
+                    if (startDate && log.date < startDate) return false;
+                    if (endDate && log.date > endDate) return false;
+                    return true;
+                });
+            }
+            
+            if (dataToExport.length === 0) {
+                const messageDiv = document.getElementById('exportMessage');
+                messageDiv.className = 'mt-4 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-md';
+                messageDiv.textContent = 'エクスポートするデータがありません';
+                messageDiv.classList.remove('hidden');
+                setTimeout(() => {
+                    messageDiv.classList.add('hidden');
+                }, 3000);
+                return;
+            }
+            
+            // JSONデータを整形
+            const jsonData = dataToExport.map(log => ({
+                担当者: usersMap[log.user_id] || log.user_id,
+                日付: log.date,
+                企業名: log.company_name || '',
+                結果: log.result,
+                温度感: log.temperature,
+                次アクション: log.next_action,
+                メモ: log.memo || '',
+                文字起こし: log.transcript,
+                user_id: log.user_id,
+                id: log.id,
+                created_at: log.created_at,
+                updated_at: log.updated_at
+            }));
+            
+            const jsonContent = JSON.stringify(jsonData, null, 2);
+            const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            
+            const dateStr = startDate && endDate ? `${startDate}_${endDate}` : 
+                          startDate ? `${startDate}_以降` :
+                          endDate ? `_${endDate}` : '全データ';
+            link.download = `is_call_logs_${dateStr}_${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            
+            URL.revokeObjectURL(url);
+            
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.className = 'mt-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-md';
+            messageDiv.textContent = `${dataToExport.length}件のデータをJSONでエクスポートしました`;
+            messageDiv.classList.remove('hidden');
+            setTimeout(() => {
+                messageDiv.classList.add('hidden');
+            }, 3000);
+        }
+        
+        // HTMLエスケープ
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
