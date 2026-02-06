@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IS架電ログ - ダッシュボード</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="auth.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <nav class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <h1 class="text-xl font-bold text-gray-800">IS架電ログ</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="userEmail" class="text-sm text-gray-600"></span>
+                    <button 
+                        onclick="logout()" 
+                        class="text-sm text-red-600 hover:text-red-800"
+                    >
+                        ログアウト
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- ログ登録フォーム -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-bold mb-4 text-gray-800">架電ログ登録</h2>
+            
+            <form id="logForm" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="date" class="block text-sm font-medium text-gray-700 mb-1">日付</label>
+                        <input 
+                            type="date" 
+                            id="date" 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            required
+                        >
+                    </div>
+                    
+                    <div>
+                        <label for="result" class="block text-sm font-medium text-gray-700 mb-1">結果</label>
+                        <select 
+                            id="result" 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            required
+                        >
+                            <option value="">選択してください</option>
+                            <option value="成功">成功</option>
+                            <option value="失敗">失敗</option>
+                            <option value="継続">継続</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="temperature" class="block text-sm font-medium text-gray-700 mb-1">温度感</label>
+                        <select 
+                            id="temperature" 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            required
+                        >
+                            <option value="">選択してください</option>
+                            <option value="高">高</option>
+                            <option value="中">中</option>
+                            <option value="低">低</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="nextAction" class="block text-sm font-medium text-gray-700 mb-1">次アクション</label>
+                        <select 
+                            id="nextAction" 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            required
+                        >
+                            <option value="">選択してください</option>
+                            <option value="明確">明確</option>
+                            <option value="曖昧">曖昧</option>
+                            <option value="無">無</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="companyName" class="block text-sm font-medium text-gray-700 mb-1">企業名（任意）</label>
+                        <input 
+                            type="text" 
+                            id="companyName" 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="企業名を入力してください"
+                        >
+                    </div>
+                    
+                    <div>
+                        <label for="memo" class="block text-sm font-medium text-gray-700 mb-1">メモ（任意）</label>
+                        <input 
+                            type="text" 
+                            id="memo" 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="メモを入力してください"
+                        >
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="transcript" class="block text-sm font-medium text-gray-700 mb-1">文字起こしテキスト</label>
+                    <textarea 
+                        id="transcript" 
+                        rows="6"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="会話の文字起こしを貼り付けてください"
+                        required
+                    ></textarea>
+                </div>
+                
+                <button 
+                    type="submit"
+                    class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                >
+                    登録
+                </button>
+            </form>
+            
+            <div id="formMessage" class="mt-4 hidden"></div>
+        </div>
+
+        <!-- 履歴一覧 -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-bold mb-4 text-gray-800">登録履歴（直近10件）</h2>
+            
+            <div id="logsList" class="space-y-4">
+                <p class="text-gray-500 text-center py-8">読み込み中...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ページ読み込み時に認証チェック
+        async function init() {
+            const authenticated = await requireAuth();
+            if (!authenticated) return;
+            
+            // 管理者の場合は管理者画面へリダイレクト
+            const admin = await isAdmin();
+            if (admin) {
+                window.location.href = 'admin.html';
+                return;
+            }
+            
+            // ユーザー情報を表示
+            const user = await getCurrentUser();
+            if (user) {
+                document.getElementById('userEmail').textContent = user.email;
+            }
+            
+            // 今日の日付をデフォルトに設定
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('date').value = today;
+            
+            // 履歴を読み込み
+            await loadLogs();
+        }
+        
+        init();
+        
+        // フォーム送信処理
+        document.getElementById('logForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const user = await getCurrentUser();
+            if (!user) {
+                alert('ログインが必要です');
+                window.location.href = 'index.html';
+                return;
+            }
+            
+            const date = document.getElementById('date').value;
+            const result = document.getElementById('result').value;
+            const temperature = document.getElementById('temperature').value;
+            const nextAction = document.getElementById('nextAction').value;
+            const companyName = document.getElementById('companyName').value;
+            const memo = document.getElementById('memo').value;
+            const transcript = document.getElementById('transcript').value;
+            
+            const { data, error } = await supabase
+                .from('calls_logs')
+                .insert([
+                    {
+                        user_id: user.id,
+                        user_email: user.email,
+                        date: date,
+                        result: result,
+                        temperature: temperature,
+                        next_action: nextAction,
+                        company_name: companyName || null,
+                        memo: memo || null,
+                        transcript: transcript
+                    }
+                ])
+                .select();
+            
+            const messageDiv = document.getElementById('formMessage');
+            
+            if (error) {
+                messageDiv.className = 'mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md';
+                messageDiv.textContent = '登録に失敗しました: ' + error.message;
+                messageDiv.classList.remove('hidden');
+                return;
+            }
+            
+            messageDiv.className = 'mt-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-md';
+            messageDiv.textContent = '登録が完了しました';
+            messageDiv.classList.remove('hidden');
+            
+            // フォームをリセット
+            document.getElementById('logForm').reset();
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('date').value = today;
+            
+            // 履歴を再読み込み
+            await loadLogs();
+            
+            // 3秒後にメッセージを非表示
+            setTimeout(() => {
+                messageDiv.classList.add('hidden');
+            }, 3000);
+        });
+        
+        // 履歴を読み込む
+        async function loadLogs() {
+            const user = await getCurrentUser();
+            if (!user) return;
+            
+            const { data, error } = await supabase
+                .from('calls_logs')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('date', { ascending: false })
+                .order('created_at', { ascending: false })
+                .limit(10);
+            
+            const logsList = document.getElementById('logsList');
+            
+            if (error) {
+                logsList.innerHTML = '<p class="text-red-500 text-center py-8">エラー: ' + error.message + '</p>';
+                return;
+            }
+            
+            if (!data || data.length === 0) {
+                logsList.innerHTML = '<p class="text-gray-500 text-center py-8">まだ登録されたログがありません</p>';
+                return;
+            }
+            
+            logsList.innerHTML = data.map(log => `
+                <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <span class="text-sm font-medium text-gray-700">${log.date}</span>
+                            ${log.company_name ? `<span class="ml-3 px-2 py-1 text-xs rounded bg-gray-100 text-gray-800">${escapeHtml(log.company_name)}</span>` : ''}
+                            <span class="ml-3 px-2 py-1 text-xs rounded ${
+                                log.result === '成功' ? 'bg-green-100 text-green-800' :
+                                log.result === '失敗' ? 'bg-red-100 text-red-800' :
+                                'bg-yellow-100 text-yellow-800'
+                            }">${log.result}</span>
+                            <span class="ml-2 px-2 py-1 text-xs rounded bg-blue-100 text-blue-800">温度感: ${log.temperature}</span>
+                            <span class="ml-2 px-2 py-1 text-xs rounded bg-purple-100 text-purple-800">次アクション: ${log.next_action}</span>
+                        </div>
+                        <button 
+                            onclick="deleteLog('${log.id}')" 
+                            class="text-red-600 hover:text-red-800 text-sm"
+                        >
+                            削除
+                        </button>
+                    </div>
+                    ${log.memo ? `<div class="text-sm text-gray-600 mt-2 mb-2"><strong>メモ:</strong> ${escapeHtml(log.memo)}</div>` : ''}
+                    <div class="mt-2">
+                        <button 
+                            onclick="toggleTranscript('${log.id}')" 
+                            class="text-sm text-blue-600 hover:text-blue-800 flex items-center"
+                        >
+                            <span id="toggle-icon-${log.id}">▶</span>
+                            <span class="ml-1">文字起こしを表示</span>
+                        </button>
+                        <div 
+                            id="transcript-${log.id}" 
+                            class="text-sm text-gray-600 mt-2 whitespace-pre-wrap hidden"
+                        >${escapeHtml(log.transcript)}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // ログを削除
+        async function deleteLog(logId) {
+            if (!confirm('このログを削除しますか？')) return;
+            
+            const { error } = await supabase
+                .from('calls_logs')
+                .delete()
+                .eq('id', logId);
+            
+            if (error) {
+                alert('削除に失敗しました: ' + error.message);
+                return;
+            }
+            
+            await loadLogs();
+        }
+        
+        // HTMLエスケープ
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // 文字起こしテキストの展開/折りたたみ
+        function toggleTranscript(logId) {
+            const transcriptDiv = document.getElementById(`transcript-${logId}`);
+            const toggleIcon = document.getElementById(`toggle-icon-${logId}`);
+            const button = toggleIcon.parentElement;
+            
+            if (transcriptDiv.classList.contains('hidden')) {
+                // 展開
+                transcriptDiv.classList.remove('hidden');
+                toggleIcon.textContent = '▼';
+                button.querySelector('span:last-child').textContent = '文字起こしを非表示';
+            } else {
+                // 折りたたみ
+                transcriptDiv.classList.add('hidden');
+                toggleIcon.textContent = '▶';
+                button.querySelector('span:last-child').textContent = '文字起こしを表示';
+            }
+        }
+    </script>
+</body>
+</html>
