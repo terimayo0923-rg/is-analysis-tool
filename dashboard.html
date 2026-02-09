@@ -35,6 +35,18 @@
             <h2 class="text-xl font-bold mb-4 text-gray-800">架電ログ登録</h2>
             
             <form id="logForm" class="space-y-4">
+                <div>
+                    <label for="userName" class="block text-sm font-medium text-gray-700 mb-1">担当者名</label>
+                    <input 
+                        type="text" 
+                        id="userName" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="担当者名を入力してください"
+                        required
+                    >
+                    <p class="text-xs text-gray-500 mt-1">基本はログインしている担当者名が自動で入ります（必要なら変更できます）。</p>
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label for="date" class="block text-sm font-medium text-gray-700 mb-1">日付</label>
@@ -160,6 +172,10 @@
             const user = await getCurrentUser();
             if (user) {
                 document.getElementById('userEmail').textContent = user.email;
+                const displayName = user.user_metadata?.display_name;
+                document.getElementById('userName').value = (displayName && String(displayName).trim())
+                    ? String(displayName).trim()
+                    : '';
             }
             
             // 今日の日付をデフォルトに設定
@@ -190,6 +206,32 @@
             const companyName = document.getElementById('companyName').value;
             const memo = document.getElementById('memo').value;
             const transcript = document.getElementById('transcript').value;
+            const userName = document.getElementById('userName').value;
+
+            const messageDiv = document.getElementById('formMessage');
+            messageDiv.classList.add('hidden');
+
+            if (!userName || !userName.trim()) {
+                messageDiv.className = 'mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md';
+                messageDiv.textContent = '担当者名を入力してください';
+                messageDiv.classList.remove('hidden');
+                return;
+            }
+
+            // 担当者名が変更されていれば、ユーザーのメタデータを更新（メールと担当者名の紐づけ）
+            const currentDisplayName = user.user_metadata?.display_name ? String(user.user_metadata.display_name).trim() : '';
+            const nextDisplayName = userName.trim();
+            if (nextDisplayName !== currentDisplayName) {
+                const { error: updateError } = await supabase.auth.updateUser({
+                    data: { display_name: nextDisplayName }
+                });
+                if (updateError) {
+                    messageDiv.className = 'mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md';
+                    messageDiv.textContent = '担当者名の更新に失敗しました: ' + updateError.message;
+                    messageDiv.classList.remove('hidden');
+                    return;
+                }
+            }
             
             const { data, error } = await supabase
                 .from('calls_logs')
@@ -197,6 +239,7 @@
                     {
                         user_id: user.id,
                         user_email: user.email,
+                        user_name: nextDisplayName,
                         date: date,
                         result: result,
                         temperature: temperature,
@@ -207,8 +250,6 @@
                     }
                 ])
                 .select();
-            
-            const messageDiv = document.getElementById('formMessage');
             
             if (error) {
                 messageDiv.className = 'mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md';
@@ -225,6 +266,7 @@
             document.getElementById('logForm').reset();
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('date').value = today;
+            document.getElementById('userName').value = nextDisplayName;
             
             // 履歴を再読み込み
             await loadLogs();
