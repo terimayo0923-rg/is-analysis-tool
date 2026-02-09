@@ -133,7 +133,7 @@
         async function loadUsers() {
             const { data, error } = await supabase
                 .from('calls_logs')
-                .select('user_id, user_email')
+                .select('user_id, user_email, user_name')
                 .order('user_id');
             
             if (error) {
@@ -145,7 +145,7 @@
             const uniqueUsers = {};
             data.forEach(log => {
                 if (!uniqueUsers[log.user_id]) {
-                    uniqueUsers[log.user_id] = log.user_email || log.user_id;
+                    uniqueUsers[log.user_id] = log.user_name || log.user_email || log.user_id;
                 }
             });
             
@@ -197,7 +197,7 @@
                     <div class="flex justify-between items-start mb-2">
                         <div>
                             <span class="text-sm font-medium text-gray-700">${log.date}</span>
-                            <span class="ml-3 text-sm text-gray-600">担当者: ${usersMap[log.user_id] || log.user_id}</span>
+                            <span class="ml-3 text-sm text-gray-600">担当者: ${escapeHtml(log.user_name || usersMap[log.user_id] || log.user_email || log.user_id)}</span>
                             ${log.company_name ? `<span class="ml-3 px-2 py-1 text-xs rounded bg-gray-100 text-gray-800">${escapeHtml(log.company_name)}</span>` : ''}
                             <span class="ml-3 px-2 py-1 text-xs rounded ${
                                 log.result === '成功' ? 'bg-green-100 text-green-800' :
@@ -248,8 +248,9 @@
             const csvRows = [
                 headers.join(','),
                 ...dataToExport.map(log => {
+                    const memberName = log.user_name || usersMap[log.user_id] || log.user_email || log.user_id;
                     const row = [
-                        `"${(usersMap[log.user_id] || log.user_id).replace(/"/g, '""')}"`,
+                        `"${String(memberName).replace(/"/g, '""')}"`,
                         `"${log.date}"`,
                         `"${(log.company_name || '').replace(/"/g, '""')}"`,
                         `"${log.result}"`,
@@ -314,7 +315,7 @@
             
             // JSONデータを整形
             const jsonData = dataToExport.map(log => ({
-                担当者: usersMap[log.user_id] || log.user_id,
+                担当者: log.user_name || usersMap[log.user_id] || log.user_email || log.user_id,
                 日付: log.date,
                 企業名: log.company_name || '',
                 結果: log.result,
